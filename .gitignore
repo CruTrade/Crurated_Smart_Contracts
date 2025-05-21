@@ -1,2 +1,17 @@
-.qodo
+# Foundry build output
+out/
+cache/
+
+# File temporanei
+*.log
+*.tmp
+
+# VSCode e altri editor
+.vscode/
+.idea/
+*.swp
+
+# File di sistema
 .DS_Store
+Thumbs.db
+.qodo
