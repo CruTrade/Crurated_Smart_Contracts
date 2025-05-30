@@ -4,285 +4,180 @@ pragma solidity 0.8.30;
 import {CruratedBase} from "./abstracts/CruratedBase.sol";
 
 /**
- * @title Crurated (https://crurated.com/)
+ * @title Crurated
  * @author mazzacash (https://linkedin.com/in/mazzacash/)
- * @notice Premium ERC1155 token implementation for collectibles with provenance tracking
- * @dev Implements soulbound tokens with comprehensive features:
- *      - Batch minting operations for efficient token creation
- *      - Historical provenance tracking with timestamped status records
- *      - Automated metadata generation with IPFS integration
- *      - Protocol-level pause functionality for emergency situations
- *      - Upgradeable architecture for future improvements
- *      - Gas-optimized batch operations for all major functions
- *
- *      Tokens created by this contract are permanently attached to their original
- *      owner (soulbound) through direct blocking of transfer functions, while
- *      maintaining full compatibility with ERC1155 standards for viewing and
- *      querying operations.
- *
+ * @notice Soulbound ERC1155 collectibles with dynamic status tracking
+ * @dev Gas-optimized batch operations, historical migration, upgradeable architecture
  * @custom:security-contact security@crurated.com
  */
 contract Crurated is CruratedBase {
     /*//////////////////////////////////////////////////////////////
-                              CONSTRUCTOR
+                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Constructor disables initializers to prevent implementation contract initialization
+     * @notice Deploy contract and disable initializers
+     * @dev UUPS proxy pattern - use initialize() after deployment
      */
     constructor() {
         _disableInitializers();
     }
 
     /**
-     * @notice Initializes the contract (replaces constructor for upgradeable contracts)
-     * @param owner Address that will own the contract
+     * @notice Initialize contract with owner
+     * @param owner Address with administrative control
      */
     function initialize(address owner) external initializer {
         __CruratedBase_init(owner);
     }
 
     /*//////////////////////////////////////////////////////////////
-                             ADMIN FUNCTIONS
+                                ADMIN FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Pauses all token operations
-     * @dev Can only be called by the contract owner
+     * @notice Pause all operations (emergency)
      */
     function pause() external onlyOwner {
         _pause();
     }
 
     /**
-     * @notice Unpauses all token operations
-     * @dev Can only be called by the contract owner
+     * @notice Resume normal operations
      */
     function unpause() external onlyOwner {
         _unpause();
     }
 
     /**
-     * @notice Sets HTTP gateway for metadata access
-     * @param newGateway New gateway URL
+     * @notice Register new status type
+     * @param name Human readable status name
+     * @return statusId Assigned identifier
      */
-    function setHttpGateway(string calldata newGateway) external onlyOwner {
-        // Update HTTP gateway
-        _httpGateway = newGateway;
-        emit HttpGatewayUpdated(newGateway);
+    function addStatus(string calldata name) external onlyOwner returns (uint8 statusId) {
+        return _registerStatus(name);
     }
 
     /*//////////////////////////////////////////////////////////////
-                              TOKEN LOGIC
+                                TOKEN OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Mints new tokens with metadata (batch operation)
-     * @param cids Array of IPFS CIDs for token metadata
-     * @param amounts Array of token amounts
-     * @return tokenIds Array of newly minted token IDs
+     * @notice Migrate tokens with complete historical data
+     * @dev Atomic creation + full provenance history in one transaction
+     * @param cids IPFS content identifiers
+     * @param amounts Quantities to mint per token
+     * @param statuses Historical status arrays per token
+     * @return tokenIds Created token identifiers
+     */
+    function migrate(
+        string[] calldata cids,
+        uint256[] calldata amounts,
+        Status[][] calldata statuses
+    ) external onlyOwner whenNotPaused returns (uint256[] memory tokenIds) {
+        uint256 length = cids.length;
+        if (length == 0 || length != amounts.length || length != statuses.length) 
+            revert InvalidBatchInput();
+
+        tokenIds = new uint256[](length);
+        uint256[] memory mintAmounts = new uint256[](length);
+        address owner_ = owner();
+
+        // Process each token with historical timeline
+        for (uint256 i; i < length;) {
+            (tokenIds[i], mintAmounts[i]) = _processMigration(cids[i], amounts[i], statuses[i]);
+            unchecked { ++i; }
+        }
+
+        // Batch mint all migrated tokens
+        _mintBatch(owner_, tokenIds, mintAmounts, "");
+        return tokenIds;
+    }
+
+    /**
+     * @notice Create new tokens with metadata
+     * @dev Standard token creation for normal operations
+     * @param cids IPFS content identifiers
+     * @param amounts Quantities to mint per token
+     * @return tokenIds Created token identifiers
      */
     function mint(
         string[] calldata cids,
         uint256[] calldata amounts
     ) external onlyOwner whenNotPaused returns (uint256[] memory tokenIds) {
-        // Validate inputs
         uint256 length = cids.length;
         if (length == 0 || length != amounts.length) revert InvalidBatchInput();
 
-        // Prepare arrays for batch mint
         tokenIds = new uint256[](length);
         uint256[] memory mintAmounts = new uint256[](length);
         address owner_ = owner();
 
-        // Process each token in the batch
-        for (uint256 i; i < length; ) {
+        // Process new token creation
+        for (uint256 i; i < length;) {
             (tokenIds[i], mintAmounts[i]) = _processMint(cids[i], amounts[i]);
-
-            unchecked {
-                ++i;
-            }
+            unchecked { ++i; }
         }
 
-        // Execute batch mint operation
+        // Batch mint all new tokens
         _mintBatch(owner_, tokenIds, mintAmounts, "");
-    }
-
-    /**
-     * @dev Process a single token mint within a batch
-     * @param cid IPFS CID for token metadata
-     * @param amount Token amount to mint
-     * @return tokenId The new token ID
-     * @return mintAmount The amount being minted
-     */
-    function _processMint(
-        string calldata cid,
-        uint256 amount
-    ) private returns (uint256 tokenId, uint256 mintAmount) {
-        // Validate amount
-        if (amount == 0) revert ZeroMintAmount();
-
-        // Create new token
-        tokenId = _createToken(cid);
-
-        return (tokenId, amount);
-    }
-
-    /**
-     * @notice Imports tokens with historical provenance data (batch operation)
-     * @param data Array of token data for import
-     * @return tokenIds Array of imported token IDs
-     */
-    function migrate(
-        Data[] calldata data
-    ) external onlyOwner whenNotPaused returns (uint256[] memory tokenIds) {
-        // Validate input
-        uint256 length = data.length;
-        if (length == 0) revert InvalidBatchInput();
-
-        // Prepare arrays for batch mint
-        tokenIds = new uint256[](length);
-        uint256[] memory amounts = new uint256[](length);
-        address owner_ = owner();
-
-        // Process each token in the batch
-        for (uint256 i; i < length; ) {
-            (tokenIds[i], amounts[i]) = _processMigration(data[i]);
-
-            unchecked {
-                ++i;
-            }
-        }
-
-        // Execute batch mint operation
-        _mintBatch(owner_, tokenIds, amounts, "");
-    }
-
-    /**
-     * @dev Process a single token migration within a batch
-     * @param data Token data for migration
-     * @return tokenId The new token ID
-     * @return mintAmount The amount being minted
-     */
-    function _processMigration(
-        Data calldata data
-    ) private returns (uint256 tokenId, uint256 mintAmount) {
-        // Validate migration data
-        if (data.amount == 0) revert ZeroMintAmount();
-        if (data.timestamps.length != data.statuses.length)
-            revert InvalidBatchInput();
-
-        // Create new token
-        tokenId = _createToken(data.cid);
-
-        // Process historical statuses
-        uint256 length = data.statuses.length;
-        if (length > 0) {
-            for (uint256 i; i < length; ) {
-                _addStatus(tokenId, data.statuses[i], data.timestamps[i]);
-
-                unchecked {
-                    ++i;
-                }
-            }
-        }
-
-        return (tokenId, data.amount);
+        return tokenIds;
     }
 
     /*//////////////////////////////////////////////////////////////
-                             STATUS LOGIC
+                                STATUS OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Updates status for multiple tokens with current timestamp
-     * @param tokenIds Array of token IDs
-     * @param statuses Array of status messages
+     * @notice Update token statuses with custom timestamps
+     * @dev Apply status changes with precise timing control
+     * @param tokenIds Tokens to update
+     * @param statuses Status data to apply
      */
-    function updateCurrentStatus(
+    function update(
         uint256[] calldata tokenIds,
-        string[] calldata statuses
+        Status[] calldata statuses
     ) external onlyOwner whenNotPaused {
-        // Validate inputs
         uint256 length = tokenIds.length;
-        if (length == 0 || length != statuses.length)
-            revert InvalidBatchInput();
+        if (length == 0 || length != statuses.length) revert InvalidBatchInput();
 
-        uint40 timestamp = uint40(block.timestamp);
-
-        // Process each status update in the batch
-        for (uint256 i; i < length; ) {
-            _addStatus(tokenIds[i], statuses[i], timestamp);
-
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    /**
-     * @notice Updates status for tokens with historical timestamps
-     * @param tokenIds Array of token IDs
-     * @param statuses Array of status messages
-     * @param timestamps Array of status timestamps
-     */
-    function updateHistoricalStatus(
-        uint256[] calldata tokenIds,
-        string[] calldata statuses,
-        uint40[] calldata timestamps
-    ) external onlyOwner whenNotPaused {
-        // Validate inputs
-        uint256 length = tokenIds.length;
-        if (
-            length == 0 ||
-            length != statuses.length ||
-            length != timestamps.length
-        ) revert InvalidBatchInput();
-
-        // Process each status update in the batch
-        for (uint256 i; i < length; ) {
-            _addStatus(tokenIds[i], statuses[i], timestamps[i]);
-
-            unchecked {
-                ++i;
-            }
+        // Apply each status update
+        for (uint256 i; i < length;) {
+            Status calldata status = statuses[i];
+            _addStatus(tokenIds[i], status.statusId, status.reason, status.timestamp);
+            unchecked { ++i; }
         }
     }
 
     /*//////////////////////////////////////////////////////////////
-                            METADATA LOGIC
+                                METADATA OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Updates metadata CIDs for multiple tokens (batch operation)
-     * @param tokenIds Array of token IDs
-     * @param newCids Array of new IPFS CIDs
+     * @notice Update token metadata
+     * @dev Batch update IPFS content identifiers
+     * @param tokenIds Tokens to update
+     * @param newCids New IPFS CIDs
      */
     function setCIDs(
         uint256[] calldata tokenIds,
         string[] calldata newCids
     ) external onlyOwner whenNotPaused {
-        // Validate inputs
         uint256 length = tokenIds.length;
         if (length == 0 || length != newCids.length) revert InvalidBatchInput();
 
-        // Process each metadata update in the batch
-        for (uint256 i; i < length; ) {
+        // Update each token metadata
+        for (uint256 i; i < length;) {
             _updateMetadata(tokenIds[i], newCids[i]);
-
-            unchecked {
-                ++i;
-            }
+            unchecked { ++i; }
         }
     }
 
     /*//////////////////////////////////////////////////////////////
-                          TRANSFER OVERRIDES
+                                SOULBOUND OVERRIDES
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Overrides ERC1155 transfer function to make tokens non-transferable
-     * @dev Reverts all transfer attempts with a clear error message
+     * @notice Transfer blocked - tokens are soulbound
      */
     function safeTransferFrom(
         address,
@@ -290,13 +185,12 @@ contract Crurated is CruratedBase {
         uint256,
         uint256,
         bytes memory
-    ) public virtual override {
+    ) public pure override {
         revert TokenSoulbound();
     }
 
     /**
-     * @notice Overrides ERC1155 batch transfer function to make tokens non-transferable
-     * @dev Reverts all batch transfer attempts with a clear error message
+     * @notice Batch transfer blocked - tokens are soulbound
      */
     function safeBatchTransferFrom(
         address,
@@ -304,7 +198,14 @@ contract Crurated is CruratedBase {
         uint256[] memory,
         uint256[] memory,
         bytes memory
-    ) public virtual override {
+    ) public pure override {
+        revert TokenSoulbound();
+    }
+
+    /**
+     * @notice Approval blocked - tokens are soulbound
+     */
+    function setApprovalForAll(address, bool) public pure override {
         revert TokenSoulbound();
     }
 }

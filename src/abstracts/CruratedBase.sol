@@ -6,24 +6,20 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 
 /**
- * @title CruratedBase (https://crurated.com/)
+ * @title CruratedBase
  * @author mazzacash (https://www.linkedin.com/in/mazzacash/)
- * @notice Abstract foundation for the Crurated protocol's token system
- * @dev A sophisticated base contract providing core functionality for NFT collectibles
- *      with built-in provenance tracking and non-transferability.
+ * @notice Enterprise-grade abstract contract for soulbound NFT collectibles with comprehensive provenance tracking
+ * @dev Advanced implementation featuring O(1) lookups, gas-optimized batch operations, and atomic data migration capabilities.
+ *      Designed for high-performance collectible management with immutable ownership and complete audit trails.
  *
- *      Key features include:
- *      - Soulbound tokens (non-transferable after minting)
- *      - IPFS-native metadata with optimized URI handling
- *      - Comprehensive historical provenance tracking
- *      - Emergency pause functionality for risk mitigation
- *      - Secure upgrade mechanisms via UUPS pattern
- *
- *      This contract is designed as an abstract base to facilitate future extensions
- *      while maintaining a clean separation of concerns.
+ *      Key Features:
+ *      • Soulbound architecture preventing secondary market speculation
+ *      • Dynamic provenance system with efficient reverse lookups
+ *      • Atomic migration supporting complete historical reconstruction
+ *      • UUPS upgradeability with strict owner authorization
+ *      • Production-ready security with comprehensive input validation
  */
 abstract contract CruratedBase is
     ERC1155Upgradeable,
@@ -31,84 +27,51 @@ abstract contract CruratedBase is
     PausableUpgradeable,
     UUPSUpgradeable
 {
-    using StringsUpgradeable for uint256;
     using CountersUpgradeable for CountersUpgradeable.Counter;
 
     /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
+                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Name of the token collection
+    /// @notice Human-readable collection name
     string public constant name = "Crurated";
 
-    /// @notice Symbol of the token collection
+    /// @notice Collection symbol identifier
     string public constant symbol = "CRURATED";
 
     /*//////////////////////////////////////////////////////////////
-                                 STORAGE
+                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev HTTP gateway prefix for metadata (for traditional web access)
-    string internal _httpGateway;
+    /// @dev Next available status identifier
+    uint8 internal _nextStatusId;
 
-    /// @dev Mapping from token ID to IPFS CID
-    mapping(uint256 => string) internal _cids;
-
-    /// @dev Token ID counter for sequential minting
+    /// @dev Sequential token identifier counter
     CountersUpgradeable.Counter internal _tokenIds;
 
+    /// @dev Token metadata mapping: tokenId => IPFS CID
+    mapping(uint256 => string) internal _cids;
+
+    /// @dev Provenance type registry: statusId => human readable name
+    mapping(uint8 => string) internal _statusNames;
+
+    /// @dev Reverse lookup optimization: keccak256(name) => statusId
+    mapping(bytes32 => uint8) internal _statusNameToId;
+
     /*//////////////////////////////////////////////////////////////
-                               STRUCTS
+                                STRUCTS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Structure for token data during migration
-     * @param cid IPFS Content Identifier for token metadata
-     * @param amount Token supply amount
-     * @param statuses Historical status records
-     * @param timestamps Timestamps corresponding to historical statuses
+     * @notice Provenance record structure for collectible lifecycle tracking
+     * @param statusId Unique identifier for provenance type
+     * @param timestamp Precise moment of provenance event
+     * @param reason Detailed explanation of provenance change
      */
-    struct Data {
-        string cid;
-        uint256 amount;
-        string[] statuses;
-        uint40[] timestamps;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                ERRORS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Thrown when a status string is empty
-    error EmptyStatus();
-
-    /// @notice Thrown when input validation fails
-    error InvalidInput();
-
-    /// @notice Thrown when attempting to transfer a non-transferable token
-    error TokenSoulbound();    
-
-    /// @notice Thrown when a mint amount is zero
-    error ZeroMintAmount();
-
-    /// @notice Thrown when batch input arrays have mismatched lengths
-    error InvalidBatchInput();
-
-    /// @notice Thrown when referenced token does not exist
-    error TokenNotExists(uint256 tokenId);
-
-    /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @dev Validates that a token exists
-     * @param tokenId Token ID to validate
-     */
-    modifier tokenExists(uint256 tokenId) {
-        if (tokenId == 0 || tokenId > _tokenIds.current())
-            revert TokenNotExists(tokenId);
-        _;
+    struct Status {
+        uint8 statusId;
+        uint40 timestamp;
+        string reason;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -116,40 +79,91 @@ abstract contract CruratedBase is
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Emitted when a token's status is updated
-     * @param tokenId ID of the token
-     * @param status New status message
-     * @param timestamp Time when status was recorded
+     * @notice Emitted when collectible provenance is updated
+     * @param tokenId Collectible receiving provenance update
+     * @param statusId Provenance type for efficient filtering
+     * @param timestamp Precise moment of provenance event
+     * @param reason Detailed explanation of provenance change
      */
-    event StatusUpdated(
+    event ProvenanceUpdated(
         uint256 indexed tokenId,
-        string status,
-        uint40 timestamp
+        uint8 indexed statusId,
+        uint40 timestamp,
+        string reason
     );
 
     /**
-     * @notice Emitted when HTTP gateway is updated
-     * @param newGateway New gateway URL
+     * @notice Emitted when new provenance type is registered
+     * @param statusId Unique identifier assigned to provenance type
+     * @param name Human-readable provenance type name
      */
-    event HttpGatewayUpdated(string newGateway);
+    event ProvenanceTypeAdded(uint8 indexed statusId, string name);
 
     /**
-     * @notice Emitted when token metadata is updated
-     * @param tokenId ID of the token
-     * @param cid New IPFS CID
+     * @notice Emitted when collectible metadata is updated
+     * @param tokenId Collectible with updated metadata
+     * @param cid New IPFS content identifier
      */
     event MetadataUpdated(uint256 indexed tokenId, string cid);
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZER
+                                ERRORS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Thrown when creating provenance type with empty name
+    error EmptyStatus();
+
+    /// @notice Thrown when invalid parameters provided
+    error InvalidInput();
+
+    /// @notice Thrown when attempting transfer of soulbound token
+    error TokenSoulbound();
+
+    /// @notice Thrown when attempting zero-quantity mint
+    error ZeroMintAmount();
+
+    /// @notice Thrown when batch operation arrays have mismatched lengths
+    error InvalidBatchInput();
+
+    /// @notice Thrown when referencing non-existent token
+    error TokenNotExists(uint256 tokenId);
+
+    /// @notice Thrown when referencing non-existent provenance type
+    error StatusNotExists(uint8 statusId);
+
+    /*//////////////////////////////////////////////////////////////
+                                MODIFIERS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Initialization function for the base contract
-     * @param owner Address that will own the contract
+     * @dev Validates token existence before operation
+     * @param tokenId Token identifier to validate
+     */
+    modifier tokenExists(uint256 tokenId) {
+        if (tokenId == 0 || tokenId > _tokenIds.current())
+            revert TokenNotExists(tokenId);
+        _;
+    }
+
+    /**
+     * @dev Validates provenance type existence before operation
+     * @param statusId Provenance type identifier to validate
+     */
+    modifier statusExists(uint8 statusId) {
+        if (bytes(_statusNames[statusId]).length == 0)
+            revert StatusNotExists(statusId);
+        _;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                INITIALIZER
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Initializes upgradeable contract with essential dependencies
+     * @param owner Address receiving administrative privileges
      */
     function __CruratedBase_init(address owner) internal onlyInitializing {
-        // Initialize with ipfs:// as the base URI prefix
         __ERC1155_init("ipfs://");
         __Ownable_init(owner);
         __Pausable_init();
@@ -157,145 +171,196 @@ abstract contract CruratedBase is
     }
 
     /*//////////////////////////////////////////////////////////////
-                              CORE VIEWS
+                                VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Gets the complete metadata URI for a token
-     * @dev Overrides the standard uri function to return the CID for specific token
-     * @param tokenId Token identifier
-     * @return string Token's metadata URI, using the base URI from ERC1155
+     * @notice Returns complete metadata URI for specified collectible
+     * @param tokenId Collectible identifier
+     * @return Complete IPFS URI for metadata access
      */
-    function uri(uint256 tokenId)
-        public
-        view
-        override
-        tokenExists(tokenId)
-        returns (string memory)
-    {
-        // Get the base URI from parent contract and append this token's CID
+    function uri(
+        uint256 tokenId
+    ) public view override tokenExists(tokenId) returns (string memory) {
         return string(abi.encodePacked(super.uri(0), _cids[tokenId]));
     }
 
     /**
-     * @notice Gets the HTTP URI for a token (for traditional web access)
-     * @dev Constructs a web-accessible URL using the HTTP gateway and token ID
-     * @param tokenId Token identifier
-     * @return string Token's HTTP URI
-     */
-    function httpUri(uint256 tokenId)
-        public
-        view
-        tokenExists(tokenId)
-        returns (string memory)
-    {
-        if (bytes(_httpGateway).length == 0) return "";
-        return
-            string(abi.encodePacked(_httpGateway, tokenId.toString(), ".json"));
-    }
-
-    /**
-     * @notice Gets the current HTTP gateway URL
-     * @return string The HTTP gateway URL
-     */
-    function httpGateway() public view returns (string memory) {
-        return _httpGateway;
-    }
-
-    /**
-     * @notice Gets the current total token count
-     * @return uint256 Current number of token IDs created
+     * @notice Returns total number of collectibles created
+     * @return Current collectible count
      */
     function tokenCount() public view returns (uint256) {
         return _tokenIds.current();
     }
 
     /**
-     * @notice Gets a token's IPFS CID directly
-     * @param tokenId Token identifier
-     * @return string Token's IPFS CID
+     * @notice Returns IPFS content identifier for specified collectible
+     * @param tokenId Collectible identifier
+     * @return IPFS content identifier
      */
-    function cidOf(uint256 tokenId)
-        public
-        view
-        tokenExists(tokenId)
-        returns (string memory)
-    {
+    function cidOf(
+        uint256 tokenId
+    ) public view tokenExists(tokenId) returns (string memory) {
         return _cids[tokenId];
     }
 
+    /**
+     * @notice Returns human-readable name for provenance type
+     * @param statusId Provenance type identifier
+     * @return Human-readable provenance type name
+     */
+    function statusName(
+        uint8 statusId
+    ) public view statusExists(statusId) returns (string memory) {
+        return _statusNames[statusId];
+    }
+
+    /**
+     * @notice Returns next available provenance type identifier
+     * @return Next provenance type identifier
+     */
+    function nextStatusId() public view returns (uint8) {
+        return _nextStatusId + 1;
+    }
+
     /*//////////////////////////////////////////////////////////////
-                           INTERNAL FUNCTIONS
+                            INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Update metadata for a single token
-     * @param tokenId Token ID
-     * @param newCid New IPFS CID
+     * @dev Creates new collectible with metadata
+     * @param cid IPFS content identifier for metadata
+     * @return tokenId Newly created collectible identifier
      */
-    function _updateMetadata(uint256 tokenId, string calldata newCid)
-        internal
-        tokenExists(tokenId)
-    {
-        // Validate CID
-        if (bytes(newCid).length == 0) revert InvalidInput();
-
-        // Update metadata
-        _cids[tokenId] = newCid;
-
-        // Emit metadata event
-        emit MetadataUpdated(tokenId, newCid);
-    }
-
-    /**
-     * @dev Add a status update for a token
-     * @param tokenId Token ID
-     * @param status Status message
-     * @param timestamp Status timestamp
-     */
-    function _addStatus(
-        uint256 tokenId,
-        string memory status,
-        uint40 timestamp
-    ) internal tokenExists(tokenId) {
-        // Validate status
-        if (bytes(status).length == 0) revert EmptyStatus();
-
-        // Emit status event
-        emit StatusUpdated(tokenId, status, timestamp);
-    }
-
-    /**
-     * @dev Create a new token and assign metadata
-     * @param cid IPFS CID for token metadata
-     * @return tokenId The new token ID
-     */
-    function _createToken(string calldata cid)
-        internal
-        returns (uint256 tokenId)
-    {
+    function _createToken(
+        string calldata cid
+    ) internal returns (uint256 tokenId) {
         if (bytes(cid).length == 0) revert InvalidInput();
 
-        // Create new token ID
         _tokenIds.increment();
         tokenId = _tokenIds.current();
-
-        // Set token metadata
         _cids[tokenId] = cid;
-        
-        // Emit metadata created event
-        emit MetadataUpdated(tokenId, cid);
 
         return tokenId;
     }
 
     /**
-     * @dev UUPS authorization function for upgrades
-     * @param newImplementation Address of new implementation
+     * @dev Updates metadata for existing collectible
+     * @param tokenId Collectible to update
+     * @param newCid New IPFS content identifier
      */
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        onlyOwner
-    {}
+    function _updateMetadata(
+        uint256 tokenId,
+        string calldata newCid
+    ) internal tokenExists(tokenId) {
+        if (bytes(newCid).length == 0) revert InvalidInput();
+
+        _cids[tokenId] = newCid;
+        emit MetadataUpdated(tokenId, newCid);
+    }
+
+    /**
+     * @dev Registers new provenance type with O(1) lookup optimization
+     * @param _name Human-readable provenance type name
+     * @return statusId Assigned provenance type identifier
+     */
+    function _registerStatus(
+        string calldata _name
+    ) internal returns (uint8 statusId) {
+        if (bytes(name).length == 0) revert EmptyStatus();
+
+        bytes32 nameHash = keccak256(bytes(_name));
+
+        // Return existing identifier if already registered
+        if (_statusNameToId[nameHash] != 0) {
+            return _statusNameToId[nameHash];
+        }
+
+        statusId = ++_nextStatusId;
+        _statusNames[statusId] = name;
+        _statusNameToId[nameHash] = statusId;
+
+        emit ProvenanceTypeAdded(statusId, name);
+        return statusId;
+    }
+
+    /**
+     * @dev Records provenance update for collectible
+     * @param tokenId Collectible receiving update
+     * @param statusId Provenance type identifier
+     * @param reason Detailed explanation of change
+     * @param timestamp Precise moment of provenance event
+     */
+    function _addStatus(
+        uint256 tokenId,
+        uint8 statusId,
+        string calldata reason,
+        uint40 timestamp
+    ) internal tokenExists(tokenId) statusExists(statusId) {
+        emit ProvenanceUpdated(tokenId, statusId, timestamp, reason);
+    }
+
+    /**
+     * @dev Processes standard mint operation with validation
+     * @param cid IPFS content identifier
+     * @param amount Quantity to mint
+     * @return tokenId New collectible identifier
+     * @return mintAmount Validated mint quantity
+     */
+    function _processMint(
+        string calldata cid,
+        uint256 amount
+    ) internal returns (uint256 tokenId, uint256 mintAmount) {
+        if (amount == 0) revert ZeroMintAmount();
+
+        tokenId = _createToken(cid);
+        return (tokenId, amount);
+    }
+
+    /**
+     * @dev Processes migration with complete historical provenance reconstruction
+     * @param cid IPFS content identifier
+     * @param amount Quantity to mint
+     * @param statuses Complete historical provenance timeline
+     * @return tokenId New collectible identifier
+     * @return mintAmount Validated mint quantity
+     */
+    function _processMigration(
+        string calldata cid,
+        uint256 amount,
+        Status[] calldata statuses
+    ) internal returns (uint256 tokenId, uint256 mintAmount) {
+        if (amount == 0) revert ZeroMintAmount();
+
+        tokenId = _createToken(cid);
+
+        // Reconstruct complete historical provenance timeline
+        uint256 statusLength = statuses.length;
+        for (uint256 j; j < statusLength; ) {
+            Status calldata status = statuses[j];
+            _addStatus(
+                tokenId,
+                status.statusId,
+                status.reason,
+                status.timestamp
+            );
+            unchecked {
+                ++j;
+            }
+        }
+
+        return (tokenId, amount);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                UUPS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Authorizes contract upgrades with strict owner validation
+     * @param newImplementation Address of new implementation contract
+     */
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 }
