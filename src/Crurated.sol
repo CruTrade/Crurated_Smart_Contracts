@@ -37,6 +37,7 @@ contract Crurated is CruratedBase {
 
     /**
      * @notice Pause all operations (emergency)
+     * @dev Only callable by contract owner
      */
     function pause() external onlyOwner {
         _pause();
@@ -44,6 +45,7 @@ contract Crurated is CruratedBase {
 
     /**
      * @notice Resume normal operations
+     * @dev Only callable by contract owner
      */
     function unpause() external onlyOwner {
         _unpause();
@@ -53,8 +55,9 @@ contract Crurated is CruratedBase {
      * @notice Register new status type
      * @param name Human readable status name
      * @return statusId Assigned identifier
+     * @dev Only callable by contract owner
      */
-    function addStatus(string calldata name) external onlyOwner returns (uint8 statusId) {
+    function addStatus(string calldata name) external onlyOwner returns (uint256 statusId) {
         return _registerStatus(name);
     }
 
@@ -67,7 +70,7 @@ contract Crurated is CruratedBase {
      * @dev Atomic creation + full provenance history in one transaction
      * @param cids IPFS content identifiers
      * @param amounts Quantities to mint per token
-     * @param statuses Historical status arrays per token
+     * @param statuses Historical status arrays per token (FIXED: 2D array for batch consistency)
      * @return tokenIds Created token identifiers
      */
     function migrate(
@@ -129,21 +132,27 @@ contract Crurated is CruratedBase {
 
     /**
      * @notice Update token statuses with custom timestamps
-     * @dev Apply status changes with precise timing control
+     * @dev Apply status changes with precise timing control (FIXED: 2D array for batch consistency)
      * @param tokenIds Tokens to update
-     * @param statuses Status data to apply
+     * @param statuses Status data arrays to apply
      */
     function update(
         uint256[] calldata tokenIds,
-        Status[] calldata statuses
+        Status[][] calldata statuses
     ) external onlyOwner whenNotPaused {
         uint256 length = tokenIds.length;
         if (length == 0 || length != statuses.length) revert InvalidBatchInput();
 
         // Apply each status update
         for (uint256 i; i < length;) {
-            Status calldata status = statuses[i];
-            _addStatus(tokenIds[i], status.statusId, status.reason, status.timestamp);
+            Status[] calldata tokenStatuses = statuses[i];
+            uint256 statusLength = tokenStatuses.length;
+            
+            for (uint256 j; j < statusLength;) {
+                Status calldata status = tokenStatuses[j];
+                _addStatus(tokenIds[i], status.statusId, status.reason, status.timestamp);
+                unchecked { ++j; }
+            }
             unchecked { ++i; }
         }
     }
@@ -178,6 +187,7 @@ contract Crurated is CruratedBase {
 
     /**
      * @notice Transfer blocked - tokens are soulbound
+     * @dev All transfers revert with TokenSoulbound error
      */
     function safeTransferFrom(
         address,
@@ -191,6 +201,7 @@ contract Crurated is CruratedBase {
 
     /**
      * @notice Batch transfer blocked - tokens are soulbound
+     * @dev All batch transfers revert with TokenSoulbound error
      */
     function safeBatchTransferFrom(
         address,
@@ -204,6 +215,7 @@ contract Crurated is CruratedBase {
 
     /**
      * @notice Approval blocked - tokens are soulbound
+     * @dev All approvals revert with TokenSoulbound error
      */
     function setApprovalForAll(address, bool) public pure override {
         revert TokenSoulbound();

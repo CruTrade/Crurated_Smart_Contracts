@@ -10,16 +10,10 @@ import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
 /**
  * @title CruratedBase
  * @author mazzacash (https://www.linkedin.com/in/mazzacash/)
- * @notice Enterprise-grade abstract contract for soulbound NFT collectibles with comprehensive provenance tracking
- * @dev Advanced implementation featuring O(1) lookups, gas-optimized batch operations, and atomic data migration capabilities.
- *      Designed for high-performance collectible management with immutable ownership and complete audit trails.
- *
- *      Key Features:
- *      • Soulbound architecture preventing secondary market speculation
- *      • Dynamic provenance system with efficient reverse lookups
- *      • Atomic migration supporting complete historical reconstruction
- *      • UUPS upgradeability with strict owner authorization
- *      • Production-ready security with comprehensive input validation
+ * @notice Abstract base for soulbound ERC1155 collectibles with provenance tracking
+ * @dev Gas-optimized implementation with batch operations and upgradeable architecture.
+ *      Features comprehensive status tracking, metadata management, and historical migration.
+ *      All tokens are soulbound (non-transferable) to prevent secondary market speculation.
  */
 abstract contract CruratedBase is
     ERC1155Upgradeable,
@@ -35,7 +29,7 @@ abstract contract CruratedBase is
 
     /// @notice Human-readable collection name
     string public constant name = "Crurated";
-
+    
     /// @notice Collection symbol identifier
     string public constant symbol = "CRURATED";
 
@@ -44,7 +38,7 @@ abstract contract CruratedBase is
     //////////////////////////////////////////////////////////////*/
 
     /// @dev Next available status identifier
-    uint8 internal _nextStatusId;
+    uint256 internal _nextStatusId;
 
     /// @dev Sequential token identifier counter
     CountersUpgradeable.Counter internal _tokenIds;
@@ -52,11 +46,8 @@ abstract contract CruratedBase is
     /// @dev Token metadata mapping: tokenId => IPFS CID
     mapping(uint256 => string) internal _cids;
 
-    /// @dev Provenance type registry: statusId => human readable name
-    mapping(uint8 => string) internal _statusNames;
-
-    /// @dev Reverse lookup optimization: keccak256(name) => statusId
-    mapping(bytes32 => uint8) internal _statusNameToId;
+    /// @dev Status registry mapping: statusId => human readable name
+    mapping(uint256 => string) internal _statusNames;
 
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
@@ -65,12 +56,12 @@ abstract contract CruratedBase is
     /**
      * @notice Provenance record structure for collectible lifecycle tracking
      * @param statusId Unique identifier for provenance type
-     * @param timestamp Precise moment of provenance event
+     * @param timestamp Precise moment of provenance event (unix timestamp)
      * @param reason Detailed explanation of provenance change
      */
     struct Status {
-        uint8 statusId;
-        uint40 timestamp;
+        uint256 statusId;
+        uint256 timestamp;
         string reason;
     }
 
@@ -87,8 +78,8 @@ abstract contract CruratedBase is
      */
     event ProvenanceUpdated(
         uint256 indexed tokenId,
-        uint8 indexed statusId,
-        uint40 timestamp,
+        uint256 indexed statusId,
+        uint256 timestamp,
         string reason
     );
 
@@ -97,7 +88,7 @@ abstract contract CruratedBase is
      * @param statusId Unique identifier assigned to provenance type
      * @param name Human-readable provenance type name
      */
-    event ProvenanceTypeAdded(uint8 indexed statusId, string name);
+    event ProvenanceTypeAdded(uint256 indexed statusId, string name);
 
     /**
      * @notice Emitted when collectible metadata is updated
@@ -112,24 +103,24 @@ abstract contract CruratedBase is
 
     /// @notice Thrown when creating provenance type with empty name
     error EmptyStatus();
-
+    
     /// @notice Thrown when invalid parameters provided
     error InvalidInput();
-
+    
     /// @notice Thrown when attempting transfer of soulbound token
     error TokenSoulbound();
-
+    
     /// @notice Thrown when attempting zero-quantity mint
     error ZeroMintAmount();
-
+    
     /// @notice Thrown when batch operation arrays have mismatched lengths
     error InvalidBatchInput();
-
+    
     /// @notice Thrown when referencing non-existent token
     error TokenNotExists(uint256 tokenId);
-
+    
     /// @notice Thrown when referencing non-existent provenance type
-    error StatusNotExists(uint8 statusId);
+    error StatusNotExists(uint256 statusId);
 
     /*//////////////////////////////////////////////////////////////
                                 MODIFIERS
@@ -149,7 +140,7 @@ abstract contract CruratedBase is
      * @dev Validates provenance type existence before operation
      * @param statusId Provenance type identifier to validate
      */
-    modifier statusExists(uint8 statusId) {
+    modifier statusExists(uint256 statusId) {
         if (bytes(_statusNames[statusId]).length == 0)
             revert StatusNotExists(statusId);
         _;
@@ -179,9 +170,7 @@ abstract contract CruratedBase is
      * @param tokenId Collectible identifier
      * @return Complete IPFS URI for metadata access
      */
-    function uri(
-        uint256 tokenId
-    ) public view override tokenExists(tokenId) returns (string memory) {
+    function uri(uint256 tokenId) public view override tokenExists(tokenId) returns (string memory) {
         return string(abi.encodePacked(super.uri(0), _cids[tokenId]));
     }
 
@@ -198,9 +187,7 @@ abstract contract CruratedBase is
      * @param tokenId Collectible identifier
      * @return IPFS content identifier
      */
-    function cidOf(
-        uint256 tokenId
-    ) public view tokenExists(tokenId) returns (string memory) {
+    function cidOf(uint256 tokenId) public view tokenExists(tokenId) returns (string memory) {
         return _cids[tokenId];
     }
 
@@ -209,9 +196,7 @@ abstract contract CruratedBase is
      * @param statusId Provenance type identifier
      * @return Human-readable provenance type name
      */
-    function statusName(
-        uint8 statusId
-    ) public view statusExists(statusId) returns (string memory) {
+    function statusName(uint256 statusId) public view statusExists(statusId) returns (string memory) {
         return _statusNames[statusId];
     }
 
@@ -219,7 +204,7 @@ abstract contract CruratedBase is
      * @notice Returns next available provenance type identifier
      * @return Next provenance type identifier
      */
-    function nextStatusId() public view returns (uint8) {
+    function nextStatusId() public view returns (uint256) {
         return _nextStatusId + 1;
     }
 
@@ -232,9 +217,7 @@ abstract contract CruratedBase is
      * @param cid IPFS content identifier for metadata
      * @return tokenId Newly created collectible identifier
      */
-    function _createToken(
-        string calldata cid
-    ) internal returns (uint256 tokenId) {
+    function _createToken(string calldata cid) internal returns (uint256 tokenId) {
         if (bytes(cid).length == 0) revert InvalidInput();
 
         _tokenIds.increment();
@@ -249,10 +232,7 @@ abstract contract CruratedBase is
      * @param tokenId Collectible to update
      * @param newCid New IPFS content identifier
      */
-    function _updateMetadata(
-        uint256 tokenId,
-        string calldata newCid
-    ) internal tokenExists(tokenId) {
+    function _updateMetadata(uint256 tokenId, string calldata newCid) internal tokenExists(tokenId) {
         if (bytes(newCid).length == 0) revert InvalidInput();
 
         _cids[tokenId] = newCid;
@@ -260,27 +240,17 @@ abstract contract CruratedBase is
     }
 
     /**
-     * @dev Registers new provenance type with O(1) lookup optimization
-     * @param _name Human-readable provenance type name
+     * @dev Registers new provenance type with human-readable name
+     * @param _name Human-readable provenance type name (FIXED: using parameter instead of constant)
      * @return statusId Assigned provenance type identifier
      */
-    function _registerStatus(
-        string calldata _name
-    ) internal returns (uint8 statusId) {
-        if (bytes(name).length == 0) revert EmptyStatus();
-
-        bytes32 nameHash = keccak256(bytes(_name));
-
-        // Return existing identifier if already registered
-        if (_statusNameToId[nameHash] != 0) {
-            return _statusNameToId[nameHash];
-        }
+    function _registerStatus(string calldata _name) internal returns (uint256 statusId) {
+        if (bytes(_name).length == 0) revert EmptyStatus();
 
         statusId = ++_nextStatusId;
-        _statusNames[statusId] = name;
-        _statusNameToId[nameHash] = statusId;
+        _statusNames[statusId] = _name; // FIXED: using _name parameter instead of constant name
 
-        emit ProvenanceTypeAdded(statusId, name);
+        emit ProvenanceTypeAdded(statusId, _name);
         return statusId;
     }
 
@@ -293,9 +263,9 @@ abstract contract CruratedBase is
      */
     function _addStatus(
         uint256 tokenId,
-        uint8 statusId,
+        uint256 statusId,
         string calldata reason,
-        uint40 timestamp
+        uint256 timestamp
     ) internal tokenExists(tokenId) statusExists(statusId) {
         emit ProvenanceUpdated(tokenId, statusId, timestamp, reason);
     }
@@ -336,17 +306,10 @@ abstract contract CruratedBase is
 
         // Reconstruct complete historical provenance timeline
         uint256 statusLength = statuses.length;
-        for (uint256 j; j < statusLength; ) {
+        for (uint256 j; j < statusLength;) {
             Status calldata status = statuses[j];
-            _addStatus(
-                tokenId,
-                status.statusId,
-                status.reason,
-                status.timestamp
-            );
-            unchecked {
-                ++j;
-            }
+            _addStatus(tokenId, status.statusId, status.reason, status.timestamp);
+            unchecked { ++j; }
         }
 
         return (tokenId, amount);
@@ -360,7 +323,5 @@ abstract contract CruratedBase is
      * @dev Authorizes contract upgrades with strict owner validation
      * @param newImplementation Address of new implementation contract
      */
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }
