@@ -15,3 +15,7 @@ cache/
 .DS_Store
 Thumbs.db
 .qodo
+
+
+# Soldeer
+/dependencies

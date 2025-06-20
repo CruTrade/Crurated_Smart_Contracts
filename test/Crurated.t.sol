@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import "../src/Crurated.sol";
 import {CruratedBase} from "../src/abstracts/CruratedBase.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title CruratedTest
@@ -14,7 +14,7 @@ import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
  *      metadata management, transfer restrictions, and pausing
  */
 contract CruratedTest is Test {
-    using StringsUpgradeable for uint256;
+    using Strings for uint256;
 
     // Contract instances
     Crurated implementation;
@@ -30,20 +30,20 @@ contract CruratedTest is Test {
     string constant TEST_CID = "QmTest1234567890";
 
     // Status IDs for testing
-    uint8 createdStatusId;
-    uint8 certifiedStatusId;
-    uint8 processedStatusId;
-    uint8 shippedStatusId;
+    uint256 createdStatusId;
+    uint256 certifiedStatusId;
+    uint256 processedStatusId;
+    uint256 shippedStatusId;
 
     // Events to test against
     event MetadataUpdated(uint256 indexed tokenId, string cid);
     event ProvenanceUpdated(
         uint256 indexed tokenId,
-        uint8 indexed statusId,
-        uint40 timestamp,
+        uint256 indexed statusId,
+        uint256 timestamp,
         string reason
     );
-    event ProvenanceTypeAdded(uint8 indexed statusId, string name);
+    event ProvenanceTypeAdded(uint256 indexed statusId, string name);
     event Paused(address account);
     event Unpaused(address account);
 
@@ -80,7 +80,7 @@ contract CruratedTest is Test {
                         INITIALIZATION TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function testInitialization() public {
+    function testInitialization() public view {
         assertEq(proxy.name(), "Crurated");
         assertEq(proxy.symbol(), "CRURATED");
         assertEq(proxy.owner(), owner);
@@ -110,7 +110,7 @@ contract CruratedTest is Test {
         vm.expectEmit(true, true, true, true);
         emit ProvenanceTypeAdded(5, "New Status");
 
-        uint8 statusId = proxy.addStatus("New Status");
+        uint256 statusId = proxy.addStatus("New Status");
         assertEq(statusId, 5);
         assertEq(proxy.statusName(statusId), "New Status");
 
@@ -121,8 +121,8 @@ contract CruratedTest is Test {
         vm.startPrank(owner);
 
         assertEq(proxy.nextStatusId(), 5); // After setUp, next should be 5
-        
-        uint8 newStatusId = proxy.addStatus("Test Status");
+
+        uint256 newStatusId = proxy.addStatus("Test Status");
         assertEq(newStatusId, 5);
         assertEq(proxy.nextStatusId(), 6);
 
@@ -256,13 +256,13 @@ contract CruratedTest is Test {
         // Prepare status history
         CruratedBase.Status[][] memory statusHistory = new CruratedBase.Status[][](1);
         statusHistory[0] = new CruratedBase.Status[](2);
-        
+
         statusHistory[0][0] = CruratedBase.Status({
             statusId: createdStatusId,
             timestamp: 1000000,
             reason: "Initial creation"
         });
-        
+
         statusHistory[0][1] = CruratedBase.Status({
             statusId: certifiedStatusId,
             timestamp: 1100000,
@@ -295,7 +295,7 @@ contract CruratedTest is Test {
 
         // Prepare status history
         CruratedBase.Status[][] memory statusHistory = new CruratedBase.Status[][](2);
-        
+
         // First token history
         statusHistory[0] = new CruratedBase.Status[](2);
         statusHistory[0][0] = CruratedBase.Status({
@@ -393,10 +393,10 @@ contract CruratedTest is Test {
                          STATUS UPDATE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function testUpdateStatus() public {
+    function testUpdateSingleStatus() public {
         vm.startPrank(owner);
 
-        // Mint a token first
+        // Mint a token
         string[] memory cids = new string[](1);
         cids[0] = TEST_CID;
 
@@ -406,20 +406,21 @@ contract CruratedTest is Test {
         uint256[] memory tokenIds = proxy.mint(cids, amounts);
         uint256 tokenId = tokenIds[0];
 
-        // Update the status
+        // Update status
         uint256[] memory updateIds = new uint256[](1);
         updateIds[0] = tokenId;
 
-        CruratedBase.Status[] memory statuses = new CruratedBase.Status[](1);
-        statuses[0] = CruratedBase.Status({
+        CruratedBase.Status[][] memory statuses = new CruratedBase.Status[][](1);
+        statuses[0] = new CruratedBase.Status[](1);
+        statuses[0][0] = CruratedBase.Status({
             statusId: certifiedStatusId,
-            timestamp: uint40(block.timestamp),
+            timestamp: uint256(block.timestamp),
             reason: "Certified by admin"
         });
 
         // Update status and check event
         vm.expectEmit(true, true, true, true);
-        emit ProvenanceUpdated(tokenId, certifiedStatusId, uint40(block.timestamp), "Certified by admin");
+        emit ProvenanceUpdated(tokenId, certifiedStatusId, uint256(block.timestamp), "Certified by admin");
 
         proxy.update(updateIds, statuses);
 
@@ -445,15 +446,17 @@ contract CruratedTest is Test {
         updateIds[0] = tokenIds[0];
         updateIds[1] = tokenIds[1];
 
-        CruratedBase.Status[] memory statuses = new CruratedBase.Status[](2);
-        statuses[0] = CruratedBase.Status({
+        CruratedBase.Status[][] memory statuses = new CruratedBase.Status[][](2);
+        statuses[0] = new CruratedBase.Status[](1);
+        statuses[0][0] = CruratedBase.Status({
             statusId: certifiedStatusId,
-            timestamp: uint40(block.timestamp),
+            timestamp: uint256(block.timestamp),
             reason: "Token 1 certified"
         });
-        statuses[1] = CruratedBase.Status({
+        statuses[1] = new CruratedBase.Status[](1);
+        statuses[1][0] = CruratedBase.Status({
             statusId: processedStatusId,
-            timestamp: uint40(block.timestamp),
+            timestamp: uint256(block.timestamp),
             reason: "Token 2 processed"
         });
 
@@ -468,10 +471,11 @@ contract CruratedTest is Test {
         uint256[] memory updateIds = new uint256[](1);
         updateIds[0] = 999; // Non-existent token
 
-        CruratedBase.Status[] memory statuses = new CruratedBase.Status[](1);
-        statuses[0] = CruratedBase.Status({
+        CruratedBase.Status[][] memory statuses = new CruratedBase.Status[][](1);
+        statuses[0] = new CruratedBase.Status[](1);
+        statuses[0][0] = CruratedBase.Status({
             statusId: certifiedStatusId,
-            timestamp: uint40(block.timestamp),
+            timestamp: uint256(block.timestamp),
             reason: "Test"
         });
 
@@ -776,12 +780,12 @@ contract CruratedTest is Test {
             statusHistory[i] = new CruratedBase.Status[](2);
             statusHistory[i][0] = CruratedBase.Status({
                 statusId: createdStatusId,
-                timestamp: uint40(1000000 + i * 1000),
+                timestamp: uint256(1000000 + i * 1000),
                 reason: "Migrated creation"
             });
             statusHistory[i][1] = CruratedBase.Status({
                 statusId: certifiedStatusId,
-                timestamp: uint40(1100000 + i * 1000),
+                timestamp: uint256(1100000 + i * 1000),
                 reason: "Migrated certification"
             });
         }
