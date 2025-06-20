@@ -5,7 +5,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title CruratedBase
@@ -21,15 +21,13 @@ abstract contract CruratedBase is
     PausableUpgradeable,
     UUPSUpgradeable
 {
-    using CountersUpgradeable for CountersUpgradeable.Counter;
-
     /*//////////////////////////////////////////////////////////////
                                 CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Human-readable collection name
     string public constant name = "Crurated";
-    
+
     /// @notice Collection symbol identifier
     string public constant symbol = "CRURATED";
 
@@ -41,7 +39,7 @@ abstract contract CruratedBase is
     uint256 internal _nextStatusId;
 
     /// @dev Sequential token identifier counter
-    CountersUpgradeable.Counter internal _tokenIds;
+    uint256 internal _tokenIds;
 
     /// @dev Token metadata mapping: tokenId => IPFS CID
     mapping(uint256 => string) internal _cids;
@@ -103,22 +101,22 @@ abstract contract CruratedBase is
 
     /// @notice Thrown when creating provenance type with empty name
     error EmptyStatus();
-    
+
     /// @notice Thrown when invalid parameters provided
     error InvalidInput();
-    
+
     /// @notice Thrown when attempting transfer of soulbound token
     error TokenSoulbound();
-    
+
     /// @notice Thrown when attempting zero-quantity mint
     error ZeroMintAmount();
-    
+
     /// @notice Thrown when batch operation arrays have mismatched lengths
     error InvalidBatchInput();
-    
+
     /// @notice Thrown when referencing non-existent token
     error TokenNotExists(uint256 tokenId);
-    
+
     /// @notice Thrown when referencing non-existent provenance type
     error StatusNotExists(uint256 statusId);
 
@@ -131,7 +129,7 @@ abstract contract CruratedBase is
      * @param tokenId Token identifier to validate
      */
     modifier tokenExists(uint256 tokenId) {
-        if (tokenId == 0 || tokenId > _tokenIds.current())
+        if (tokenId == 0 || tokenId > _tokenIds)
             revert TokenNotExists(tokenId);
         _;
     }
@@ -179,7 +177,7 @@ abstract contract CruratedBase is
      * @return Current collectible count
      */
     function tokenCount() public view returns (uint256) {
-        return _tokenIds.current();
+        return _tokenIds;
     }
 
     /**
@@ -220,8 +218,8 @@ abstract contract CruratedBase is
     function _createToken(string calldata cid) internal returns (uint256 tokenId) {
         if (bytes(cid).length == 0) revert InvalidInput();
 
-        _tokenIds.increment();
-        tokenId = _tokenIds.current();
+        _tokenIds++;
+        tokenId = _tokenIds;
         _cids[tokenId] = cid;
 
         return tokenId;
