@@ -77,6 +77,9 @@ anvil
 
 # Deploy locally (no setup required)
 ./deploy.sh local
+
+# Run slither
+slither . --config-file .slither.config.json --exclude-dependencies
 ```
 
 ## Contract Architecture

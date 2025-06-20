@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      # - name: Install Soldeer
+      #   run: |
+      #     curl -L https://raw.githubusercontent.com/paradigmxyz/soldeer/main/install | bash
+      #     echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          forge soldeer install
+
+      - name: Build contracts
+        run: forge build
+
+      - name: Run tests
+        run: forge test
+
+      # - name: Run tests with coverage
+      #   run: forge coverage
+
+      # - name: Generate gas report
+      #   run: forge snapshot
+
+      # - name: Check formatting
+      #   run: forge fmt --check
+
+      - name: Run slither
+        uses: crytic/slither-action@v0.4.1
+        with:
+          fail-on: low
+
+      # - name: Upload coverage reports
+      #   uses: codecov/codecov-action@v3
+      #   with:
+      #     file: ./lcov.info
+      #     flags: unittests
+      #     name: codecov-umbrella
+      #     fail_ci_if_error: false
+
+  # security:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Install Foundry
+  #       uses: foundry-rs/foundry-toolchain@v1
+  #       with:
+  #         version: nightly
+
+  #     - name: Install Soldeer
+  #       run: |
+  #         curl -L https://raw.githubusercontent.com/paradigmxyz/soldeer/main/install | bash
+  #         echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+  #     - name: Install dependencies
+  #       run: |
+  #         forge soldeer install
+
+  #     - name: Run Mythril analysis
+  #       run: |
+  #         if command -v myth &> /dev/null; then
+  #           myth analyze src/Crurated.sol --solc-json foundry.toml || true
+  #         else
+  #           echo "Mythril not available, skipping analysis"
+  #         fi
