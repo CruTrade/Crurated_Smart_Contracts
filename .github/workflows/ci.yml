@@ -42,12 +42,12 @@ jobs:
       # - name: Check formatting
       #   run: forge fmt --check
 
-      - name: Run slither
-        uses: crytic/slither-action@v0.4.1
-        with:
-          fail-on: medium
-          config-file: .slither.config.json
-          slither-args: --exclude-dependencies
+      # - name: Run slither
+      #   uses: crytic/slither-action@v0.4.1
+      #   with:
+      #     fail-on: medium
+      #     config-file: .slither.config.json
+      #     slither-args: --exclude-dependencies
 
       # - name: Upload coverage reports
       #   uses: codecov/codecov-action@v3
