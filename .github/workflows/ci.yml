@@ -47,6 +47,7 @@ jobs:
         with:
           fail-on: medium
           config-file: .slither.config.json
+          slither-args: --exclude-dependencies
 
       # - name: Upload coverage reports
       #   uses: codecov/codecov-action@v3
