@@ -1,0 +1,9 @@
+{
+  "filter_paths": "dependencies/,lib/,node_modules/",
+  "exclude_dependencies": true,
+  "exclude_informational": false,
+  "exclude_low": false,
+  "exclude_medium": false,
+  "exclude_high": false,
+  "detectors_to_exclude": []
+}
