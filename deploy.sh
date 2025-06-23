@@ -82,7 +82,7 @@ deploy_local() {
     fi
 
     # Deploy using local configuration (no private key required)
-    forge script script/Deploy.s.sol:Deploy --rpc-url http://localhost:8545 --broadcast --verify --sig "runLocal()"
+    forge script script/Deploy.s.sol:Deploy --rpc-url http://localhost:8545 --broadcast --sig "runLocal()"
 
     print_success "Local deployment completed!"
 }

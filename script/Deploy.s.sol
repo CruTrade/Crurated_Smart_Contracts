@@ -12,6 +12,14 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  */
 contract Deploy is Script {
     /*//////////////////////////////////////////////////////////////
+                                CONSTANTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice First prefunded account address in anvil
+    address constant ANVIL_ACCOUNT = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+    uint256 constant ANVIL_PRIVATE_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+
+    /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
@@ -77,7 +85,7 @@ contract Deploy is Script {
      * @dev Uses the first prefunded account (0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266)
      */
     function runLocal() external {
-        owner = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // Anvil's first prefunded account
+        owner = ANVIL_ACCOUNT; // Anvil's first prefunded account
 
         console2.log("Deploying to local anvil...");
         console2.log("Owner:", owner);
@@ -174,8 +182,11 @@ contract Deploy is Script {
      * @dev Internal function that handles local deployment without private key
      */
     function _deployContractsLocal() internal {
-        // For local deployment, we can use the default account without private key
+        // For local deployment, we use the anvil private key
         // Anvil's first account is already unlocked and has funds
+
+        // Start broadcasting from the first anvil account using private key
+        vm.startBroadcast(ANVIL_PRIVATE_KEY);
 
         // Deploy implementation
         Crurated implementationContract = new Crurated();
@@ -193,6 +204,8 @@ contract Deploy is Script {
             initData
         );
         proxy = address(proxyContract);
+
+        vm.stopBroadcast();
 
         if (implementation == address(0) || proxy == address(0)) {
             revert DeploymentFailed();
