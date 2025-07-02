@@ -112,7 +112,12 @@ contract Deploy is Script {
 
         if (owner == address(0)) revert InvalidOwner();
 
+        // Get deployer address from private key
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
+
         console2.log("Deploying to Avalanche mainnet...");
+        console2.log("Deployer address:", deployer);
         console2.log("Owner:", owner);
 
         _deployContracts();
@@ -134,7 +139,12 @@ contract Deploy is Script {
 
         if (owner == address(0)) revert InvalidOwner();
 
+        // Get deployer address from private key
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
+
         console2.log("Deploying to Avalanche Fuji testnet...");
+        console2.log("Deployer address:", deployer);
         console2.log("Owner:", owner);
 
         _deployContracts();

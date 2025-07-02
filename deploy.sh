@@ -66,7 +66,18 @@ check_env_vars_local() {
 load_env() {
     if [ -f ".env" ]; then
         print_status "Loading environment variables from .env file"
-        export $(cat .env | grep -v '^#' | xargs)
+        # Read .env file, filter out comments and empty lines, then export each variable
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Skip empty lines and comments
+            if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+                continue
+            fi
+
+            # Export the variable if it's a valid assignment
+            if [[ "$line" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "$line"
+            fi
+        done < .env
     fi
 }
 
