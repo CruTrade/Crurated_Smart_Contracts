@@ -2,10 +2,10 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import "../src/Crurated.sol";
-import {CruratedBase} from "../src/abstracts/CruratedBase.sol";
-import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
+import { Crurated } from "../src/Crurated.sol";
+import { CruratedBase } from "../src/abstracts/CruratedBase.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title CruratedTest
@@ -25,6 +25,7 @@ contract CruratedTest is Test {
     address owner = address(0x1);
     address user1 = address(0x2);
     address user2 = address(0x3);
+    address admin = address(0x4);
 
     // Test constants
     string constant TEST_CID = "QmTest1234567890";
@@ -46,6 +47,7 @@ contract CruratedTest is Test {
     event ProvenanceTypeAdded(uint256 indexed statusId, string name);
     event Paused(address account);
     event Unpaused(address account);
+    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
 
     /**
      * @notice Setup function called before each test
@@ -67,7 +69,10 @@ contract CruratedTest is Test {
         // Create a reference to the proxy with the Crurated ABI
         proxy = Crurated(address(proxyContract));
 
-        // Register status types for testing
+        // Set admin role
+        proxy.setAdmin(admin);
+
+        // Register status types for testing (owner only)
         createdStatusId = proxy.addStatus("Created");
         certifiedStatusId = proxy.addStatus("Certified");
         processedStatusId = proxy.addStatus("Processed");
@@ -134,11 +139,9 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testMintSingleToken() public {
-        vm.startPrank(owner);
-
+        vm.startPrank(admin);
         string[] memory cids = new string[](1);
         cids[0] = TEST_CID;
-
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1;
 
@@ -148,16 +151,13 @@ contract CruratedTest is Test {
         assertEq(tokenIds[0], 1);
         assertEq(proxy.balanceOf(owner, 1), 1);
         assertEq(proxy.cidOf(1), TEST_CID);
-
         // Check URI
         assertEq(proxy.uri(1), string(abi.encodePacked("ipfs://", TEST_CID)));
-
         vm.stopPrank();
     }
 
     function testMintMultipleTokens() public {
-        vm.startPrank(owner);
-
+        vm.startPrank(admin);
         string[] memory cids = new string[](3);
         cids[0] = "QmTest1";
         cids[1] = "QmTest2";
@@ -189,7 +189,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotMintWithZeroAmount() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         string[] memory cids = new string[](1);
         cids[0] = TEST_CID;
@@ -204,7 +204,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotMintWithMismatchedArrays() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         string[] memory cids = new string[](2);
         cids[0] = "QmTest1";
@@ -219,7 +219,7 @@ contract CruratedTest is Test {
         vm.stopPrank();
     }
 
-    function testCannotMintFromNonOwner() public {
+    function testCannotMintFromNonAdmin() public {
         vm.startPrank(user1);
 
         string[] memory cids = new string[](1);
@@ -228,12 +228,7 @@ contract CruratedTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1;
 
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "OwnableUnauthorizedAccount(address)",
-                user1
-            )
-        );
+        vm.expectRevert(bytes("Caller is not admin"));
         proxy.mint(cids, amounts);
 
         vm.stopPrank();
@@ -244,7 +239,7 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testMigration() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Prepare migration data
         string[] memory cids = new string[](1);
@@ -282,7 +277,7 @@ contract CruratedTest is Test {
     }
 
     function testMigrateMultipleTokens() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Prepare migration data for multiple tokens
         string[] memory cids = new string[](2);
@@ -347,7 +342,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotMigrateWithZeroAmount() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         string[] memory cids = new string[](1);
         cids[0] = TEST_CID;
@@ -370,7 +365,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotMigrateWithMismatchedArrays() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         string[] memory cids = new string[](2);
         cids[0] = "QmTest1";
@@ -394,7 +389,7 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testUpdateSingleStatus() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Mint a token
         string[] memory cids = new string[](1);
@@ -428,7 +423,7 @@ contract CruratedTest is Test {
     }
 
     function testUpdateMultipleStatuses() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Mint multiple tokens
         string[] memory cids = new string[](2);
@@ -466,7 +461,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotUpdateNonExistentToken() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         uint256[] memory updateIds = new uint256[](1);
         updateIds[0] = 999; // Non-existent token
@@ -492,7 +487,7 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testSetCIDs() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Mint a token
         string[] memory cids = new string[](1);
@@ -527,7 +522,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotSetCIDsForNonExistentToken() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         uint256[] memory updateIds = new uint256[](1);
         updateIds[0] = 999; // Non-existent token
@@ -548,7 +543,7 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testCannotTransferToken() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Mint a token
         string[] memory cids = new string[](1);
@@ -568,7 +563,7 @@ contract CruratedTest is Test {
     }
 
     function testCannotBatchTransferTokens() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Mint multiple tokens
         string[] memory cids = new string[](2);
@@ -674,10 +669,11 @@ contract CruratedTest is Test {
 
     function testCannotMintWhenPaused() public {
         vm.startPrank(owner);
-
         // Pause the contract
         proxy.pause();
+        vm.stopPrank();
 
+        vm.startPrank(admin);
         string[] memory cids = new string[](1);
         cids[0] = TEST_CID;
 
@@ -705,6 +701,7 @@ contract CruratedTest is Test {
         proxy.upgradeToAndCall(address(newImplementation), "");
 
         // Contract should still work after upgrade
+        vm.startPrank(admin);
         string[] memory cids = new string[](1);
         cids[0] = TEST_CID;
 
@@ -741,7 +738,7 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testGasEfficiencyForBatchMint() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Prepare large batch
         uint256 batchSize = 10;
@@ -765,7 +762,7 @@ contract CruratedTest is Test {
     }
 
     function testGasEfficiencyForBatchMigrate() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         // Prepare large batch
         uint256 batchSize = 5;
@@ -798,6 +795,253 @@ contract CruratedTest is Test {
         // Log gas used for analysis
         console.log("Gas used for migrating %d tokens: %d", batchSize, gasUsed);
 
+        vm.stopPrank();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        ADMIN/OWNER ROLE TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    // --- ADMIN-ONLY FUNCTION TESTS ---
+
+    // Only admin can mint
+    function testOnlyAdminCanMint() public {
+        string[] memory cids = new string[](1);
+        cids[0] = TEST_CID;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+
+        // Non-admin (user1) cannot mint
+        vm.startPrank(user1);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.mint(cids, amounts);
+        vm.stopPrank();
+
+        // Owner cannot mint
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.mint(cids, amounts);
+        vm.stopPrank();
+
+        // Admin can mint
+        vm.startPrank(admin);
+        proxy.mint(cids, amounts);
+        vm.stopPrank();
+    }
+
+    // Only admin can migrate
+    function testOnlyAdminCanMigrate() public {
+        string[] memory cids = new string[](1);
+        cids[0] = TEST_CID;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        CruratedBase.Status[][] memory statuses = new CruratedBase.Status[][](1);
+        statuses[0] = new CruratedBase.Status[](0);
+
+        // Non-admin (user1) cannot migrate
+        vm.startPrank(user1);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.migrate(cids, amounts, statuses);
+        vm.stopPrank();
+
+        // Owner cannot migrate
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.migrate(cids, amounts, statuses);
+        vm.stopPrank();
+
+        // Admin can migrate
+        vm.startPrank(admin);
+        proxy.migrate(cids, amounts, statuses);
+        vm.stopPrank();
+    }
+
+    // Only admin can update
+    function testOnlyAdminCanUpdate() public {
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 1;
+        CruratedBase.Status[][] memory statuses = new CruratedBase.Status[][](1);
+        statuses[0] = new CruratedBase.Status[](0);
+
+        // Non-admin (user1) cannot update
+        vm.startPrank(user1);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.update(tokenIds, statuses);
+        vm.stopPrank();
+
+        // Owner cannot update
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.update(tokenIds, statuses);
+        vm.stopPrank();
+
+        // Admin can update
+        vm.startPrank(admin);
+        proxy.update(tokenIds, statuses);
+        vm.stopPrank();
+    }
+
+    // Only admin can setCIDs
+    function testOnlyAdminCanSetCIDs() public {
+        // First mint a token as admin
+        vm.startPrank(admin);
+        string[] memory mintCids = new string[](1);
+        mintCids[0] = TEST_CID;
+        uint256[] memory mintAmounts = new uint256[](1);
+        mintAmounts[0] = 1;
+        uint256[] memory tokenIds = proxy.mint(mintCids, mintAmounts);
+        vm.stopPrank();
+
+        uint256[] memory updateTokenIds = new uint256[](1);
+        updateTokenIds[0] = tokenIds[0];
+        string[] memory cids = new string[](1);
+        cids[0] = "QmNewCID";
+
+        // Non-admin (user1) cannot setCIDs
+        vm.startPrank(user1);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.setCIDs(updateTokenIds, cids);
+        vm.stopPrank();
+
+        // Owner cannot setCIDs
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.setCIDs(updateTokenIds, cids);
+        vm.stopPrank();
+
+        // Admin can setCIDs
+        vm.startPrank(admin);
+        proxy.setCIDs(updateTokenIds, cids);
+        vm.stopPrank();
+    }
+
+    // --- OWNER-ONLY FUNCTION TESTS ---
+
+    // Only owner can set admin
+    function testOnlyOwnerCanSetAdmin() public {
+        // Non-owner (user1) cannot set admin
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        proxy.setAdmin(user2);
+        vm.stopPrank();
+
+        // Admin cannot set admin
+        vm.startPrank(admin);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.setAdmin(user2);
+        vm.stopPrank();
+
+        // Owner can set admin
+        vm.startPrank(owner);
+        proxy.setAdmin(user2);
+        assertEq(proxy.admin(), user2);
+        vm.stopPrank();
+    }
+
+    // Only owner can pause/unpause
+    function testOnlyOwnerCanPauseUnpause() public {
+        // Non-owner (user1) cannot pause
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        proxy.pause();
+        vm.stopPrank();
+
+        // Admin cannot pause
+        vm.startPrank(admin);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.pause();
+        vm.stopPrank();
+
+        // Owner can pause
+        vm.startPrank(owner);
+        proxy.pause();
+        proxy.unpause();
+        vm.stopPrank();
+    }
+
+    // Only owner can add status
+    function testOnlyOwnerCanAddStatus() public {
+        // Non-owner (user1) cannot add status
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        proxy.addStatus("ShouldFail");
+        vm.stopPrank();
+
+        // Admin cannot add status
+        vm.startPrank(admin);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.addStatus("ShouldFail");
+        vm.stopPrank();
+
+        // Owner can add status
+        vm.startPrank(owner);
+        uint256 statusId = proxy.addStatus("NewStatus");
+        assertEq(proxy.statusName(statusId), "NewStatus");
+        vm.stopPrank();
+    }
+
+    function testAdminSetAndEvent() public {
+        vm.startPrank(owner);
+        address newAdmin = address(0x5);
+        vm.expectEmit(true, true, false, true);
+        emit AdminChanged(admin, newAdmin);
+        proxy.setAdmin(newAdmin);
+        assertEq(proxy.admin(), newAdmin);
+        vm.stopPrank();
+    }
+
+    function testAdminCannotBeZeroAddress() public {
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("Admin cannot be zero address"));
+        proxy.setAdmin(address(0));
+        vm.stopPrank();
+    }
+
+    function testOwnerCannotCallAdminFunctions() public {
+        string[] memory cids = new string[](1);
+        cids[0] = TEST_CID;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.mint(cids, amounts);
+        vm.stopPrank();
+    }
+
+    function testAdminCannotCallOwnerFunctions() public {
+        vm.startPrank(admin);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.setAdmin(user1);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.pause();
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.unpause();
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        proxy.addStatus("ShouldFail");
+        vm.stopPrank();
+    }
+
+    function testMintToOwnerAddress() public {
+        vm.startPrank(admin);
+        string[] memory cids = new string[](1);
+        cids[0] = TEST_CID;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        uint256[] memory tokenIds = proxy.mint(cids, amounts);
+        assertEq(proxy.balanceOf(owner, tokenIds[0]), 1);
+        vm.stopPrank();
+    }
+
+    function testMigrateToOwnerAddress() public {
+        vm.startPrank(admin);
+        string[] memory cids = new string[](1);
+        cids[0] = TEST_CID;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        CruratedBase.Status[][] memory statuses = new CruratedBase.Status[][](1);
+        statuses[0] = new CruratedBase.Status[](0);
+        uint256[] memory tokenIds = proxy.migrate(cids, amounts, statuses);
+        assertEq(proxy.balanceOf(owner, tokenIds[0]), 1);
         vm.stopPrank();
     }
 }

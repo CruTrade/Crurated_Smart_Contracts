@@ -32,6 +32,33 @@ contract Crurated is CruratedBase {
     }
 
     /*//////////////////////////////////////////////////////////////
+                                ADMIN/ADMINISTRATOR ROLES
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Address with administrative privileges
+    address public admin;
+
+    /// @notice Emitted when admin is changed
+    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
+
+    /// @notice Restricts function to admin only
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Caller is not admin");
+        _;
+    }
+
+    /**
+     * @notice Set a new admin address
+     * @dev Only callable by contract owner
+     * @param newAdmin The new admin address
+     */
+    function setAdmin(address newAdmin) external onlyOwner {
+        require(newAdmin != address(0), "Admin cannot be zero address");
+        emit AdminChanged(admin, newAdmin);
+        admin = newAdmin;
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                 ADMIN FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
@@ -77,9 +104,9 @@ contract Crurated is CruratedBase {
         string[] calldata cids,
         uint256[] calldata amounts,
         Status[][] calldata statuses
-    ) external onlyOwner whenNotPaused returns (uint256[] memory tokenIds) {
+    ) external onlyAdmin whenNotPaused returns (uint256[] memory tokenIds) {
         uint256 length = cids.length;
-        if (length == 0 || length != amounts.length || length != statuses.length) 
+        if (length == 0 || length != amounts.length || length != statuses.length)
             revert InvalidBatchInput();
 
         tokenIds = new uint256[](length);
@@ -107,7 +134,7 @@ contract Crurated is CruratedBase {
     function mint(
         string[] calldata cids,
         uint256[] calldata amounts
-    ) external onlyOwner whenNotPaused returns (uint256[] memory tokenIds) {
+    ) external onlyAdmin whenNotPaused returns (uint256[] memory tokenIds) {
         uint256 length = cids.length;
         if (length == 0 || length != amounts.length) revert InvalidBatchInput();
 
@@ -139,7 +166,7 @@ contract Crurated is CruratedBase {
     function update(
         uint256[] calldata tokenIds,
         Status[][] calldata statuses
-    ) external onlyOwner whenNotPaused {
+    ) external onlyAdmin whenNotPaused {
         uint256 length = tokenIds.length;
         if (length == 0 || length != statuses.length) revert InvalidBatchInput();
 
@@ -147,7 +174,6 @@ contract Crurated is CruratedBase {
         for (uint256 i; i < length;) {
             Status[] calldata tokenStatuses = statuses[i];
             uint256 statusLength = tokenStatuses.length;
-            
             for (uint256 j; j < statusLength;) {
                 Status calldata status = tokenStatuses[j];
                 _addStatus(tokenIds[i], status.statusId, status.reason, status.timestamp);
@@ -170,7 +196,7 @@ contract Crurated is CruratedBase {
     function setCIDs(
         uint256[] calldata tokenIds,
         string[] calldata newCids
-    ) external onlyOwner whenNotPaused {
+    ) external onlyAdmin whenNotPaused {
         uint256 length = tokenIds.length;
         if (length == 0 || length != newCids.length) revert InvalidBatchInput();
 
