@@ -16,19 +16,28 @@ contract Crurated is CruratedBase {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Deploy contract and disable initializers
+     * @notice Deploy contract with initial owner and admin
      * @dev UUPS proxy pattern - use initialize() after deployment
+     * @param initialOwner Address with ownership control
+     * @param initialAdmin Address with administrative control
      */
-    constructor() {
+    constructor(address initialOwner, address initialAdmin) {
+        require(initialOwner != address(0), "Owner cannot be zero address");
+        require(initialAdmin != address(0), "Admin cannot be zero address");
         _disableInitializers();
+        admin = initialAdmin;
     }
 
     /**
-     * @notice Initialize contract with owner
-     * @param owner Address with administrative control
+     * @notice Initialize contract with owner and admin
+     * @param owner Address with ownership control
+     * @param admin_ Address with administrative control
      */
-    function initialize(address owner) external initializer {
+    function initialize(address owner, address admin_) external initializer {
+        require(owner != address(0), "Owner cannot be zero address");
+        require(admin_ != address(0), "Admin cannot be zero address");
         __CruratedBase_init(owner);
+        admin = admin_;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -84,7 +93,7 @@ contract Crurated is CruratedBase {
      * @return statusId Assigned identifier
      * @dev Only callable by contract owner
      */
-    function addStatus(string calldata name) external onlyOwner returns (uint256 statusId) {
+    function addStatus(string calldata name) external onlyAdmin returns (uint256 statusId) {
         return _registerStatus(name);
     }
 
