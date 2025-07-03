@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "./OwnershipManager.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
@@ -17,7 +17,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
  */
 abstract contract CruratedBase is
     ERC1155Upgradeable,
-    OwnableUpgradeable,
+    OwnershipManager,
     PausableUpgradeable,
     UUPSUpgradeable
 {
@@ -154,7 +154,7 @@ abstract contract CruratedBase is
      */
     function __CruratedBase_init(address owner) internal onlyInitializing {
         __ERC1155_init("ipfs://");
-        __Ownable_init(owner);
+        __OwnershipManager_init(owner);
         __Pausable_init();
         __UUPSUpgradeable_init();
     }
@@ -321,5 +321,12 @@ abstract contract CruratedBase is
      * @dev Authorizes contract upgrades with strict owner validation
      * @param newImplementation Address of new implementation contract
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(OWNER_ROLE) {}
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155Upgradeable, HierarchicalAccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
 }

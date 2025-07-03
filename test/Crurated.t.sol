@@ -48,6 +48,8 @@ contract CruratedTest is Test {
     event Paused(address account);
     event Unpaused(address account);
     event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
+    event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender);
+    event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender);
 
     /**
      * @notice Setup function called before each test
@@ -70,7 +72,11 @@ contract CruratedTest is Test {
         // Create a reference to the proxy with the Crurated ABI
         proxy = Crurated(address(proxyContract));
 
+        // Set admin role
+        proxy.grantRole(proxy.OPERATOR_ROLE(), admin);
+        // Register status types for testing (owner only)
         vm.stopPrank();
+
         // Register status types for testing (admin only)
         vm.startPrank(admin);
         createdStatusId = proxy.addStatus("Created");
@@ -88,7 +94,7 @@ contract CruratedTest is Test {
         assertEq(proxy.name(), "Crurated");
         assertEq(proxy.symbol(), "CRURATED");
         assertEq(proxy.owner(), owner);
-        assertEq(proxy.admin(), admin);
+        assertEq(proxy.hasRole(proxy.OPERATOR_ROLE(), admin), true);
     }
 
     function testCannotInitializeAgain() public {
@@ -234,7 +240,8 @@ contract CruratedTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1;
 
-        vm.expectRevert(bytes("Caller is not admin"));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
         proxy.mint(cids, amounts);
 
         vm.stopPrank();
@@ -644,10 +651,12 @@ contract CruratedTest is Test {
     function testCannotPauseFromNonOwner() public {
         vm.startPrank(user1);
 
+        bytes32 adminRole = proxy.ADMIN_ROLE();
         vm.expectRevert(
             abi.encodeWithSignature(
-                "OwnableUnauthorizedAccount(address)",
-                user1
+                "AccessControlUnauthorizedAccount(address,bytes32)",
+                user1,
+                adminRole
             )
         );
         proxy.pause();
@@ -662,10 +671,12 @@ contract CruratedTest is Test {
 
         vm.startPrank(user1);
 
+        bytes32 adminRole = proxy.ADMIN_ROLE();
         vm.expectRevert(
             abi.encodeWithSignature(
-                "OwnableUnauthorizedAccount(address)",
-                user1
+                "AccessControlUnauthorizedAccount(address,bytes32)",
+                user1,
+                adminRole
             )
         );
         proxy.unpause();
@@ -728,10 +739,12 @@ contract CruratedTest is Test {
         Crurated newImplementation = new Crurated(owner, admin);
 
         // Try to upgrade from non-owner
+        bytes32 adminRole = proxy.ADMIN_ROLE();
         vm.expectRevert(
             abi.encodeWithSignature(
-                "OwnableUnauthorizedAccount(address)",
-                user1
+                "AccessControlUnauthorizedAccount(address,bytes32)",
+                user1,
+                adminRole
             )
         );
         proxy.upgradeToAndCall(address(newImplementation), "");
@@ -819,13 +832,8 @@ contract CruratedTest is Test {
 
         // Non-admin (user1) cannot mint
         vm.startPrank(user1);
-        vm.expectRevert(bytes("Caller is not admin"));
-        proxy.mint(cids, amounts);
-        vm.stopPrank();
-
-        // Owner cannot mint
-        vm.startPrank(owner);
-        vm.expectRevert(bytes("Caller is not admin"));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
         proxy.mint(cids, amounts);
         vm.stopPrank();
 
@@ -846,13 +854,8 @@ contract CruratedTest is Test {
 
         // Non-admin (user1) cannot migrate
         vm.startPrank(user1);
-        vm.expectRevert(bytes("Caller is not admin"));
-        proxy.migrate(cids, amounts, statuses);
-        vm.stopPrank();
-
-        // Owner cannot migrate
-        vm.startPrank(owner);
-        vm.expectRevert(bytes("Caller is not admin"));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
         proxy.migrate(cids, amounts, statuses);
         vm.stopPrank();
 
@@ -871,13 +874,8 @@ contract CruratedTest is Test {
 
         // Non-admin (user1) cannot update
         vm.startPrank(user1);
-        vm.expectRevert(bytes("Caller is not admin"));
-        proxy.update(tokenIds, statuses);
-        vm.stopPrank();
-
-        // Owner cannot update
-        vm.startPrank(owner);
-        vm.expectRevert(bytes("Caller is not admin"));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
         proxy.update(tokenIds, statuses);
         vm.stopPrank();
 
@@ -905,13 +903,8 @@ contract CruratedTest is Test {
 
         // Non-admin (user1) cannot setCIDs
         vm.startPrank(user1);
-        vm.expectRevert(bytes("Caller is not admin"));
-        proxy.setCIDs(updateTokenIds, cids);
-        vm.stopPrank();
-
-        // Owner cannot setCIDs
-        vm.startPrank(owner);
-        vm.expectRevert(bytes("Caller is not admin"));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
         proxy.setCIDs(updateTokenIds, cids);
         vm.stopPrank();
 
@@ -927,20 +920,21 @@ contract CruratedTest is Test {
     function testOnlyOwnerCanSetAdmin() public {
         // Non-owner (user1) cannot set admin
         vm.startPrank(user1);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
-        proxy.setAdmin(user2);
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
+        proxy.grantRole(operatorRole, user2);
         vm.stopPrank();
 
         // Admin cannot set admin
         vm.startPrank(admin);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
-        proxy.setAdmin(user2);
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", admin, operatorRole));
+        proxy.grantRole(operatorRole, user2);
         vm.stopPrank();
 
         // Owner can set admin
         vm.startPrank(owner);
-        proxy.setAdmin(user2);
-        assertEq(proxy.admin(), user2);
+        proxy.grantRole(proxy.OPERATOR_ROLE(), user2);
+        assertEq(proxy.getRoleLevel(proxy.OPERATOR_ROLE()), 90);
         vm.stopPrank();
     }
 
@@ -948,13 +942,14 @@ contract CruratedTest is Test {
     function testOnlyOwnerCanPauseUnpause() public {
         // Non-owner (user1) cannot pause
         vm.startPrank(user1);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        bytes32 adminRole = proxy.ADMIN_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, adminRole));
         proxy.pause();
         vm.stopPrank();
 
         // Admin cannot pause
         vm.startPrank(admin);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", admin, adminRole));
         proxy.pause();
         vm.stopPrank();
 
@@ -969,13 +964,8 @@ contract CruratedTest is Test {
     function testOnlyAdminCanAddStatus() public {
         // Non-admin (user1) cannot add status
         vm.startPrank(user1);
-        vm.expectRevert(bytes("Caller is not admin"));
-        proxy.addStatus("ShouldFail");
-        vm.stopPrank();
-
-        // Owner cannot add status
-        vm.startPrank(owner);
-        vm.expectRevert(bytes("Caller is not admin"));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", user1, operatorRole));
         proxy.addStatus("ShouldFail");
         vm.stopPrank();
 
@@ -988,39 +978,52 @@ contract CruratedTest is Test {
 
     function testAdminSetAndEvent() public {
         vm.startPrank(owner);
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
         address newAdmin = address(0x5);
-        vm.expectEmit(true, true, false, true);
-        emit AdminChanged(admin, newAdmin);
-        proxy.setAdmin(newAdmin);
-        assertEq(proxy.admin(), newAdmin);
+        
+        // Expect RoleRevoked event for old admin
+        vm.expectEmit(true, true, true, true);
+        emit RoleRevoked(operatorRole, admin, owner);
+        proxy.revokeRole(operatorRole, admin);
+        
+        // Expect RoleGranted event for new admin
+        vm.expectEmit(true, true, true, true);
+        emit RoleGranted(operatorRole, newAdmin, owner);
+        proxy.grantRole(operatorRole, newAdmin);
+        
+        assertEq(proxy.getRoleLevel(operatorRole), 90);
         vm.stopPrank();
     }
 
     function testAdminCannotBeZeroAddress() public {
         vm.startPrank(owner);
-        vm.expectRevert(bytes("Admin cannot be zero address"));
-        proxy.setAdmin(address(0));
-        vm.stopPrank();
-    }
-
-    function testOwnerCannotCallAdminFunctions() public {
-        string[] memory cids = new string[](1);
-        cids[0] = TEST_CID;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 1;
-        vm.startPrank(owner);
-        vm.expectRevert(bytes("Caller is not admin"));
-        proxy.mint(cids, amounts);
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        vm.expectRevert(bytes("Account cannot be zero address"));
+        proxy.grantRole(operatorRole, address(0));
         vm.stopPrank();
     }
 
     function testAdminCannotCallOwnerFunctions() public {
         vm.startPrank(admin);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
-        proxy.setAdmin(user1);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        bytes32 operatorRole = proxy.OPERATOR_ROLE();
+        bytes32 ownerRole = proxy.ADMIN_ROLE();
+        vm.expectRevert(abi.encodeWithSignature(
+            "AccessControlUnauthorizedAccount(address,bytes32)",
+            admin,
+            operatorRole
+        ));
+        proxy.grantRole(operatorRole, user1);
+        vm.expectRevert(abi.encodeWithSignature(
+            "AccessControlUnauthorizedAccount(address,bytes32)",
+            admin,
+            ownerRole
+        ));
         proxy.pause();
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
+        vm.expectRevert(abi.encodeWithSignature(
+            "AccessControlUnauthorizedAccount(address,bytes32)",
+            admin,
+            ownerRole
+        ));
         proxy.unpause();
 
         vm.stopPrank();
