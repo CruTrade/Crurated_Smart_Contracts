@@ -29,6 +29,9 @@ contract Deploy is Script {
     /// @notice Owner address for the contract
     address public owner;
 
+    /// @notice Admin address for the contract
+    address public admin;
+
     /// @notice Implementation contract address
     address public implementation;
 
@@ -51,6 +54,7 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     error InvalidOwner();
+    error InvalidAdmin();
     error DeploymentFailed();
 
     /*//////////////////////////////////////////////////////////////
@@ -64,13 +68,16 @@ contract Deploy is Script {
     function run() external {
         // Get deployment configuration from environment
         owner = vm.envAddress("OWNER");
+        admin = vm.envAddress("ADMIN");
         string memory network = vm.envString("NETWORK");
 
         if (owner == address(0)) revert InvalidOwner();
+        if (admin == address(0)) revert InvalidAdmin();
 
         console2.log("Deploying Crurated contract...");
         console2.log("Network:", network);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         // Deploy implementation and proxy
         _deployContracts();
@@ -79,6 +86,7 @@ contract Deploy is Script {
         console2.log("Implementation:", implementation);
         console2.log("Proxy:", proxy);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         emit DeploymentComplete(implementation, proxy, owner, network);
     }
@@ -89,9 +97,11 @@ contract Deploy is Script {
      */
     function runLocal() external {
         owner = ANVIL_ACCOUNT; // Anvil's first prefunded account
+        admin = ANVIL_ACCOUNT; // Use same account for admin in local testing
 
         console2.log("Deploying to local anvil...");
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         _deployContractsLocal();
 
@@ -99,18 +109,21 @@ contract Deploy is Script {
         console2.log("Implementation:", implementation);
         console2.log("Proxy:", proxy);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         emit DeploymentComplete(implementation, proxy, owner, "local");
     }
 
     /**
      * @notice Deploy to Avalanche mainnet
-     * @dev Requires OWNER environment variable to be set
+     * @dev Requires OWNER and ADMIN environment variables to be set
      */
     function runMainnet() external {
         owner = vm.envAddress("OWNER");
+        admin = vm.envAddress("ADMIN");
 
         if (owner == address(0)) revert InvalidOwner();
+        if (admin == address(0)) revert InvalidAdmin();
 
         // Get deployer address from private key
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -119,6 +132,7 @@ contract Deploy is Script {
         console2.log("Deploying to Avalanche mainnet...");
         console2.log("Deployer address:", deployer);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         _deployContracts();
 
@@ -126,18 +140,21 @@ contract Deploy is Script {
         console2.log("Implementation:", implementation);
         console2.log("Proxy:", proxy);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         emit DeploymentComplete(implementation, proxy, owner, "mainnet");
     }
 
     /**
      * @notice Deploy to Avalanche Fuji testnet
-     * @dev Requires OWNER environment variable to be set
+     * @dev Requires OWNER and ADMIN environment variables to be set
      */
     function runTestnet() external {
         owner = vm.envAddress("OWNER");
+        admin = vm.envAddress("ADMIN");
 
         if (owner == address(0)) revert InvalidOwner();
+        if (admin == address(0)) revert InvalidAdmin();
 
         // Get deployer address from private key
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -146,6 +163,7 @@ contract Deploy is Script {
         console2.log("Deploying to Avalanche Fuji testnet...");
         console2.log("Deployer address:", deployer);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         _deployContracts();
 
@@ -153,6 +171,7 @@ contract Deploy is Script {
         console2.log("Implementation:", implementation);
         console2.log("Proxy:", proxy);
         console2.log("Owner:", owner);
+        console2.log("Admin:", admin);
 
         emit DeploymentComplete(implementation, proxy, owner, "testnet");
     }
@@ -166,14 +185,15 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy implementation
-        Crurated implementationContract = new Crurated();
+        // Deploy implementation with initial owner and admin
+        Crurated implementationContract = new Crurated(owner, admin);
         implementation = address(implementationContract);
 
         // Prepare initialization data
         bytes memory initData = abi.encodeWithSelector(
             Crurated.initialize.selector,
-            owner
+            owner,
+            admin
         );
 
         // Deploy proxy
@@ -201,14 +221,15 @@ contract Deploy is Script {
         // Start broadcasting from the first anvil account using private key
         vm.startBroadcast(ANVIL_PRIVATE_KEY);
 
-        // Deploy implementation
-        Crurated implementationContract = new Crurated();
+        // Deploy implementation with initial owner and admin
+        Crurated implementationContract = new Crurated(owner, admin);
         implementation = address(implementationContract);
 
         // Prepare initialization data
         bytes memory initData = abi.encodeWithSelector(
             Crurated.initialize.selector,
-            owner
+            owner,
+            admin
         );
 
         // Deploy proxy
@@ -234,10 +255,12 @@ contract Deploy is Script {
 
         console2.log("Verifying deployment...");
         console2.log("Contract owner:", crurated.owner());
+        console2.log("Contract admin:", crurated.admin());
         console2.log("Token count:", crurated.tokenCount());
         console2.log("Next status ID:", crurated.nextStatusId());
 
         require(crurated.owner() == owner, "Owner mismatch");
+        require(crurated.admin() == admin, "Admin mismatch");
         console2.log("Deployment verification successful!");
     }
 }

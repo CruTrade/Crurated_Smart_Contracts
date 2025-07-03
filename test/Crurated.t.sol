@@ -56,28 +56,27 @@ contract CruratedTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
-        // Deploy implementation contract
-        implementation = new Crurated();
+        // Deploy implementation contract with initial owner and admin
+        implementation = new Crurated(owner, admin);
 
         // Deploy proxy contract pointing to the implementation
         bytes memory initData = abi.encodeWithSelector(
             Crurated.initialize.selector,
-            owner
+            owner,
+            admin
         );
         proxyContract = new ERC1967Proxy(address(implementation), initData);
 
         // Create a reference to the proxy with the Crurated ABI
         proxy = Crurated(address(proxyContract));
 
-        // Set admin role
-        proxy.setAdmin(admin);
-
-        // Register status types for testing (owner only)
+        vm.stopPrank();
+        // Register status types for testing (admin only)
+        vm.startPrank(admin);
         createdStatusId = proxy.addStatus("Created");
         certifiedStatusId = proxy.addStatus("Certified");
         processedStatusId = proxy.addStatus("Processed");
         shippedStatusId = proxy.addStatus("Shipped");
-
         vm.stopPrank();
     }
 
@@ -89,20 +88,27 @@ contract CruratedTest is Test {
         assertEq(proxy.name(), "Crurated");
         assertEq(proxy.symbol(), "CRURATED");
         assertEq(proxy.owner(), owner);
+        assertEq(proxy.admin(), admin);
     }
 
     function testCannotInitializeAgain() public {
         vm.startPrank(owner);
         vm.expectRevert();
-        proxy.initialize(owner);
+        proxy.initialize(owner, admin);
         vm.stopPrank();
     }
 
     function testCannotInitializeImplementation() public {
         vm.startPrank(owner);
         vm.expectRevert();
-        implementation.initialize(owner);
+        implementation.initialize(owner, admin);
         vm.stopPrank();
+    }
+
+    function testConstructorValidatesAdmin() public {
+        // Test that constructor rejects zero address for admin
+        vm.expectRevert("Admin cannot be zero address");
+        new Crurated(owner, address(0));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -110,7 +116,7 @@ contract CruratedTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testAddStatus() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         vm.expectEmit(true, true, true, true);
         emit ProvenanceTypeAdded(5, "New Status");
@@ -123,7 +129,7 @@ contract CruratedTest is Test {
     }
 
     function testStatusIdSequence() public {
-        vm.startPrank(owner);
+        vm.startPrank(admin);
 
         assertEq(proxy.nextStatusId(), 5); // After setUp, next should be 5
 
@@ -695,7 +701,7 @@ contract CruratedTest is Test {
         vm.startPrank(owner);
 
         // Deploy new implementation
-        Crurated newImplementation = new Crurated();
+        Crurated newImplementation = new Crurated(owner, admin);
 
         // Upgrade to new implementation
         proxy.upgradeToAndCall(address(newImplementation), "");
@@ -719,7 +725,7 @@ contract CruratedTest is Test {
         vm.startPrank(user1);
 
         // Deploy new implementation
-        Crurated newImplementation = new Crurated();
+        Crurated newImplementation = new Crurated(owner, admin);
 
         // Try to upgrade from non-owner
         vm.expectRevert(
@@ -960,21 +966,21 @@ contract CruratedTest is Test {
     }
 
     // Only owner can add status
-    function testOnlyOwnerCanAddStatus() public {
-        // Non-owner (user1) cannot add status
+    function testOnlyAdminCanAddStatus() public {
+        // Non-admin (user1) cannot add status
         vm.startPrank(user1);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        vm.expectRevert(bytes("Caller is not admin"));
         proxy.addStatus("ShouldFail");
         vm.stopPrank();
 
-        // Admin cannot add status
-        vm.startPrank(admin);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
-        proxy.addStatus("ShouldFail");
-        vm.stopPrank();
-
-        // Owner can add status
+        // Owner cannot add status
         vm.startPrank(owner);
+        vm.expectRevert(bytes("Caller is not admin"));
+        proxy.addStatus("ShouldFail");
+        vm.stopPrank();
+
+        // Admin can add status
+        vm.startPrank(admin);
         uint256 statusId = proxy.addStatus("NewStatus");
         assertEq(proxy.statusName(statusId), "NewStatus");
         vm.stopPrank();
@@ -1016,8 +1022,7 @@ contract CruratedTest is Test {
         proxy.pause();
         vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
         proxy.unpause();
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", admin));
-        proxy.addStatus("ShouldFail");
+
         vm.stopPrank();
     }
 
