@@ -255,12 +255,12 @@ contract Deploy is Script {
 
         console2.log("Verifying deployment...");
         console2.log("Contract owner:", crurated.owner());
-        console2.log("Contract admin:", crurated.admin());
+        console2.log("Contract admin:", crurated.hasRole(crurated.OPERATOR_ROLE(), admin));
         console2.log("Token count:", crurated.tokenCount());
         console2.log("Next status ID:", crurated.nextStatusId());
 
         require(crurated.owner() == owner, "Owner mismatch");
-        require(crurated.admin() == admin, "Admin mismatch");
+        require(crurated.hasRole(crurated.OPERATOR_ROLE(), admin), "Admin mismatch");
         console2.log("Deployment verification successful!");
     }
 }

@@ -25,7 +25,6 @@ contract Crurated is CruratedBase {
         require(initialOwner != address(0), "Owner cannot be zero address");
         require(initialAdmin != address(0), "Admin cannot be zero address");
         _disableInitializers();
-        admin = initialAdmin;
     }
 
     /**
@@ -37,45 +36,15 @@ contract Crurated is CruratedBase {
         require(owner != address(0), "Owner cannot be zero address");
         require(admin_ != address(0), "Admin cannot be zero address");
         __CruratedBase_init(owner);
-        admin = admin_;
+        _grantRole(OPERATOR_ROLE, admin_);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                ADMIN/ADMINISTRATOR ROLES
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Address with administrative privileges
-    address public admin;
-
-    /// @notice Emitted when admin is changed
-    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
-
-    /// @notice Restricts function to admin only
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Caller is not admin");
-        _;
-    }
-
-    /**
-     * @notice Set a new admin address
-     * @dev Only callable by contract owner
-     * @param newAdmin The new admin address
-     */
-    function setAdmin(address newAdmin) external onlyOwner {
-        require(newAdmin != address(0), "Admin cannot be zero address");
-        emit AdminChanged(admin, newAdmin);
-        admin = newAdmin;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                ADMIN FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Pause all operations (emergency)
      * @dev Only callable by contract owner
      */
-    function pause() external onlyOwner {
+    function pause() external onlyRole(OWNER_ROLE) {
         _pause();
     }
 
@@ -83,7 +52,7 @@ contract Crurated is CruratedBase {
      * @notice Resume normal operations
      * @dev Only callable by contract owner
      */
-    function unpause() external onlyOwner {
+    function unpause() external onlyRole(OWNER_ROLE) {
         _unpause();
     }
 
@@ -93,7 +62,7 @@ contract Crurated is CruratedBase {
      * @return statusId Assigned identifier
      * @dev Only callable by contract owner
      */
-    function addStatus(string calldata name) external onlyAdmin returns (uint256 statusId) {
+    function addStatus(string calldata name) external onlyRole(OPERATOR_ROLE) returns (uint256 statusId) {
         return _registerStatus(name);
     }
 
@@ -113,7 +82,7 @@ contract Crurated is CruratedBase {
         string[] calldata cids,
         uint256[] calldata amounts,
         Status[][] calldata statuses
-    ) external onlyAdmin whenNotPaused returns (uint256[] memory tokenIds) {
+    ) external onlyRole(OPERATOR_ROLE) whenNotPaused returns (uint256[] memory tokenIds) {
         uint256 length = cids.length;
         if (length == 0 || length != amounts.length || length != statuses.length)
             revert InvalidBatchInput();
@@ -143,7 +112,7 @@ contract Crurated is CruratedBase {
     function mint(
         string[] calldata cids,
         uint256[] calldata amounts
-    ) external onlyAdmin whenNotPaused returns (uint256[] memory tokenIds) {
+    ) external onlyRole(OPERATOR_ROLE) whenNotPaused returns (uint256[] memory tokenIds) {
         uint256 length = cids.length;
         if (length == 0 || length != amounts.length) revert InvalidBatchInput();
 
@@ -175,7 +144,7 @@ contract Crurated is CruratedBase {
     function update(
         uint256[] calldata tokenIds,
         Status[][] calldata statuses
-    ) external onlyAdmin whenNotPaused {
+    ) external onlyRole(OPERATOR_ROLE) whenNotPaused {
         uint256 length = tokenIds.length;
         if (length == 0 || length != statuses.length) revert InvalidBatchInput();
 
@@ -205,7 +174,7 @@ contract Crurated is CruratedBase {
     function setCIDs(
         uint256[] calldata tokenIds,
         string[] calldata newCids
-    ) external onlyAdmin whenNotPaused {
+    ) external onlyRole(OPERATOR_ROLE) whenNotPaused {
         uint256 length = tokenIds.length;
         if (length == 0 || length != newCids.length) revert InvalidBatchInput();
 
